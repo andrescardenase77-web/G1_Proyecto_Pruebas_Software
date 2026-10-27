@@ -12,6 +12,9 @@ app.get('/', (req, res) => {
 
 
 const lectorRoutes = require('./routes/lectorRoutes');
+const libroRoutes = require('./routes/libroRoutes');
+
 app.use('/api/lectores', lectorRoutes);
+app.use('/api/libros', libroRoutes);
 
 module.exports = app;
