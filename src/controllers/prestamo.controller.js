@@ -2,6 +2,7 @@ const Prestamo = require('../models/prestamo.model');
 const Libro = require('../models/libro.model');
 const Lector = require('../models/lector.model');
 
+
 // 1. Obtener todos los préstamos
 exports.obtenerPrestamos = async (req, res) => {
   try {
