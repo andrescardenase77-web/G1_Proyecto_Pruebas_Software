@@ -8,22 +8,28 @@ const manejarError = (res, error) => {
     const campo = Object.keys(error.keyPattern || {})[0] || 'campo único';
     return res.status(409).json({
       success: false,
-      message: `Ya existe un lector con ese valor en '${campo}'`
+      mensaje: `Ya existe un lector con ese valor en '${campo}'`
     });
   }
 
   if (error.name === 'ValidationError') {
-    const detalles = Object.values(error.errors).map((err) => err.message);
+    const detalles = Object.values(error.errors).map((err) => err.message).join(', ');
     return res.status(400).json({
       success: false,
-      message: 'Error de validación en los datos',
-      errors: detalles
+      mensaje: detalles || 'Error de validación en los datos'
+    });
+  }
+
+  if (error.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      mensaje: 'Formato de dato o ID inválido'
     });
   }
 
   return res.status(500).json({
     success: false,
-    message: 'Error interno del servidor',
+    mensaje: 'Error interno del servidor',
     error: error.message
   });
 };
@@ -31,18 +37,21 @@ const manejarError = (res, error) => {
 // POST /api/lectores
 const crearLector = async (req, res) => {
   try {
-    const { matricula, nombre, grado_curso, correo_institucional, sancionado } = req.body;
+    const { matricula, nombre, sancionado } = req.body;
+    const gradoCurso = req.body.gradoCurso ?? req.body.grado_curso;
+    const correoInstitucional = req.body.correoInstitucional ?? req.body.correo_institucional;
+
     const nuevoLector = await Lector.create({
       matricula,
       nombre,
-      grado_curso,
-      correo_institucional,
+      gradoCurso,
+      correoInstitucional,
       sancionado
     });
 
     return res.status(201).json({
       success: true,
-      message: 'Lector registrado exitosamente',
+      mensaje: 'Lector registrado exitosamente',
       data: nuevoLector
     });
   } catch (error) {
@@ -57,8 +66,13 @@ const obtenerLectores = async (req, res) => {
     if (req.query.sancionado !== undefined) {
       filtro.sancionado = req.query.sancionado === 'true';
     }
-    if (req.query.grado_curso) {
-      filtro.grado_curso = req.query.grado_curso.trim();
+
+    const filtroGrado = req.query.gradoCurso || req.query.grado_curso;
+    if (filtroGrado) {
+      filtro.$or = [
+        { gradoCurso: filtroGrado.trim() },
+        { grado_curso: filtroGrado.trim() }
+      ];
     }
 
     const lectores = await Lector.find(filtro);
@@ -79,7 +93,7 @@ const obtenerLectorPorId = async (req, res) => {
     if (!esIdValido(id)) {
       return res.status(400).json({
         success: false,
-        message: 'ID con formato de MongoDB inválido'
+        mensaje: 'ID con formato inválido'
       });
     }
 
@@ -87,7 +101,7 @@ const obtenerLectorPorId = async (req, res) => {
     if (!lector) {
       return res.status(404).json({
         success: false,
-        message: 'Lector no encontrado'
+        mensaje: 'Lector no encontrado'
       });
     }
 
@@ -107,27 +121,43 @@ const actualizarLector = async (req, res) => {
     if (!esIdValido(id)) {
       return res.status(400).json({
         success: false,
-        message: 'ID con formato de MongoDB inválido'
+        mensaje: 'ID con formato inválido'
       });
     }
 
-    const { matricula, nombre, grado_curso, correo_institucional, sancionado } = req.body;
+    const { matricula, nombre, sancionado } = req.body;
+    const gradoCurso = req.body.gradoCurso ?? req.body.grado_curso;
+    const correoInstitucional = req.body.correoInstitucional ?? req.body.correo_institucional;
+
+    const camposActualizar = {};
+    if (matricula !== undefined) camposActualizar.matricula = matricula;
+    if (nombre !== undefined) camposActualizar.nombre = nombre;
+    if (sancionado !== undefined) camposActualizar.sancionado = sancionado;
+    if (gradoCurso !== undefined) {
+      camposActualizar.gradoCurso = gradoCurso;
+      camposActualizar.grado_curso = gradoCurso;
+    }
+    if (correoInstitucional !== undefined) {
+      camposActualizar.correoInstitucional = correoInstitucional;
+      camposActualizar.correo_institucional = correoInstitucional;
+    }
+
     const lectorActualizado = await Lector.findByIdAndUpdate(
       id,
-      { matricula, nombre, grado_curso, correo_institucional, sancionado },
+      camposActualizar,
       { new: true, runValidators: true }
     );
 
     if (!lectorActualizado) {
       return res.status(404).json({
         success: false,
-        message: 'Lector no encontrado para actualizar'
+        mensaje: 'Lector no encontrado para actualizar'
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: 'Lector actualizado exitosamente',
+      mensaje: 'Lector actualizado exitosamente',
       data: lectorActualizado
     });
   } catch (error) {
@@ -144,14 +174,14 @@ const cambiarEstadoSancion = async (req, res) => {
     if (!esIdValido(id)) {
       return res.status(400).json({
         success: false,
-        message: 'ID con formato de MongoDB inválido'
+        mensaje: 'ID con formato inválido'
       });
     }
 
     if (typeof sancionado !== 'boolean') {
       return res.status(400).json({
         success: false,
-        message: "El campo 'sancionado' debe ser booleano (true o false)"
+        mensaje: "El campo 'sancionado' debe ser booleano (true o false)"
       });
     }
 
@@ -164,13 +194,13 @@ const cambiarEstadoSancion = async (req, res) => {
     if (!lector) {
       return res.status(404).json({
         success: false,
-        message: 'Lector no encontrado'
+        mensaje: 'Lector no encontrado'
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: `Estado de sanción actualizado a: ${sancionado}`,
+      mensaje: `Estado de sanción actualizado a: ${sancionado}`,
       data: lector
     });
   } catch (error) {
@@ -185,7 +215,7 @@ const eliminarLector = async (req, res) => {
     if (!esIdValido(id)) {
       return res.status(400).json({
         success: false,
-        message: 'ID con formato de MongoDB inválido'
+        mensaje: 'ID con formato inválido'
       });
     }
 
@@ -193,13 +223,13 @@ const eliminarLector = async (req, res) => {
     if (!lectorEliminado) {
       return res.status(404).json({
         success: false,
-        message: 'Lector no encontrado para eliminar'
+        mensaje: 'Lector no encontrado para eliminar'
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: 'Lector eliminado exitosamente',
+      mensaje: 'Lector eliminado exitosamente',
       data: lectorEliminado
     });
   } catch (error) {

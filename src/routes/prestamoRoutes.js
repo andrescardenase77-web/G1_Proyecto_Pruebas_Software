@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const prestamoController = require('../controllers/prestamo.controller');
+const prestamoController = require('../controllers/prestamoController');
 
-// 1. Reportes y consultas operativas
-// Nota: Deben ir antes de '/:id' para que Express no confunda las palabras con un ID
+// 1. Reportes y consultas operativas (deben ir antes de /:id)
 router.get('/retrasados', prestamoController.obtenerPrestamosRetrasados);
 router.get('/lector/:lectorId', prestamoController.obtenerHistorialPorLector);
 
@@ -18,3 +17,4 @@ router.delete('/:id', prestamoController.eliminarPrestamo);
 router.post('/:id/devolucion', prestamoController.devolverLibro);
 
 module.exports = router;
+

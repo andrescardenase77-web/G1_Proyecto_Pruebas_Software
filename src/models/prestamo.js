@@ -40,9 +40,11 @@ const prestamoSchema = new mongoose.Schema(
     }
   },
   {
-    timestamps: true
+    collection: 'prestamos',
+    timestamps: true,
+    versionKey: false
   }
 );
 
-// El tercer argumento asegura que se conecte a la colección 'Préstamo' con tilde que está en Atlas
-module.exports = mongoose.model('Prestamo', prestamoSchema, 'Préstamo');
+module.exports = mongoose.model('Prestamo', prestamoSchema, 'prestamos');
+

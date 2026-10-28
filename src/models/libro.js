@@ -34,8 +34,9 @@ const libroSchema = new mongoose.Schema(
         message: 'El año debe ser un número entero y no puede ser un año futuro'
       }
     },
-    ejemplares_disponibles: {
+    ejemplaresDisponibles: {
       type: Number,
+      alias: 'ejemplares_disponibles',
       required: [true, 'Los ejemplares disponibles son obligatorios'],
       default: 0,
       min: [0, 'Los ejemplares disponibles deben ser mayores o iguales a 0'],
@@ -44,25 +45,28 @@ const libroSchema = new mongoose.Schema(
         message: 'Los ejemplares disponibles deben ser un número entero'
       }
     },
-    autor_id: {
+    autorId: {
       type: [
         {
           type: mongoose.Schema.Types.ObjectId,
           ref: 'Autor'
         }
       ],
+      alias: 'autor_id',
       validate: {
         validator: function (val) {
           return Array.isArray(val) && val.length > 0;
         },
-        message: 'El autor_id es obligatorio y debe contener al menos un autor'
+        message: 'El autor es obligatorio y debe contener al menos un autor'
       }
     }
   },
   {
     collection: 'libros',
     timestamps: false,
-    versionKey: false
+    versionKey: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
   }
 );
 

@@ -18,21 +18,21 @@ const tienePrestamosActivosORetrasados = async (idLibro) => {
   const idLibroObjectId = new mongoose.Types.ObjectId(idLibro);
   if (mongoose.models.Prestamo) {
     const prestamoActivo = await mongoose.model('Prestamo').findOne({
-      libro_id: idLibroObjectId,
+      libro: idLibroObjectId,
       estado: { $in: ['Activo', 'Retrasado'] }
     });
     return !!prestamoActivo;
   }
   const prestamoEncontrado = await mongoose.connection.collection('prestamos').findOne({
-    libro_id: idLibroObjectId,
+    libro: idLibroObjectId,
     estado: { $in: ['Activo', 'Retrasado'] }
   });
   return !!prestamoEncontrado;
 };
 
-const validarAutores = async (autor_id) => {
-  if (!autor_id) return null;
-  const listaAutores = Array.isArray(autor_id) ? autor_id : [autor_id];
+const validarAutores = async (autorId) => {
+  if (!autorId) return null;
+  const listaAutores = Array.isArray(autorId) ? autorId : [autorId];
 
   for (const idAutor of listaAutores) {
     if (!esIdValido(idAutor)) {
@@ -49,25 +49,30 @@ const validarAutores = async (autor_id) => {
 
 const manejarError = (res, error) => {
   if (error.code === 11000) {
+    const campo = Object.keys(error.keyPattern || {})[0] || 'campo único';
     return res.status(409).json({
-      mensaje: 'Ya existe un libro con ese ISBN'
+      success: false,
+      mensaje: `Ya existe un registro con ese valor en '${campo}'`
     });
   }
 
   if (error.name === 'ValidationError') {
     const detalleError = Object.values(error.errors).map((err) => err.message).join(', ');
     return res.status(400).json({
+      success: false,
       mensaje: detalleError || 'Error de validación en los datos'
     });
   }
 
   if (error.name === 'CastError') {
     return res.status(400).json({
+      success: false,
       mensaje: 'Formato de dato o ID inválido'
     });
   }
 
   return res.status(500).json({
+    success: false,
     mensaje: 'Error interno del servidor',
     error: error.message
   });
@@ -76,13 +81,18 @@ const manejarError = (res, error) => {
 // POST /api/libros
 const crearLibro = async (req, res) => {
   try {
-    const { isbn, titulo, anio, ejemplares_disponibles, autor_id } = req.body;
+    const { isbn, titulo, anio } = req.body;
+    const ejemplaresDisponibles = req.body.ejemplaresDisponibles ?? req.body.ejemplares_disponibles;
+    const autorId = req.body.autorId ?? req.body.autor_id;
 
     let autoresParaGuardar;
-    if (autor_id) {
-      const validacionAutores = await validarAutores(autor_id);
+    if (autorId) {
+      const validacionAutores = await validarAutores(autorId);
       if (validacionAutores?.error) {
-        return res.status(validacionAutores.error.status).json({ mensaje: validacionAutores.error.mensaje });
+        return res.status(validacionAutores.error.status).json({
+          success: false,
+          mensaje: validacionAutores.error.mensaje
+        });
       }
       autoresParaGuardar = validacionAutores.autoresValidados;
     }
@@ -91,11 +101,12 @@ const crearLibro = async (req, res) => {
       isbn,
       titulo,
       anio,
-      ejemplares_disponibles,
-      autor_id: autoresParaGuardar
+      ejemplaresDisponibles,
+      autorId: autoresParaGuardar
     });
 
     return res.status(201).json({
+      success: true,
       mensaje: 'Libro registrado exitosamente',
       data: nuevoLibro
     });
@@ -108,19 +119,30 @@ const crearLibro = async (req, res) => {
 const obtenerLibros = async (req, res) => {
   try {
     const filtrosDeBusqueda = {};
+    const autorFiltro = req.query.autorId || req.query.autor_id;
 
-    if (req.query.autor_id) {
-      if (!esIdValido(req.query.autor_id)) {
-        return res.status(400).json({ mensaje: 'ID de autor inválido para filtrar' });
+    if (autorFiltro) {
+      if (!esIdValido(autorFiltro)) {
+        return res.status(400).json({
+          success: false,
+          mensaje: 'ID de autor inválido para filtrar'
+        });
       }
-      filtrosDeBusqueda.autor_id = req.query.autor_id;
+      filtrosDeBusqueda.$or = [
+        { autorId: autorFiltro },
+        { autor_id: autorFiltro }
+      ];
     }
 
     if (req.query.isbn) filtrosDeBusqueda.isbn = req.query.isbn.trim();
     if (req.query.titulo) filtrosDeBusqueda.titulo = { $regex: req.query.titulo.trim(), $options: 'i' };
 
-    const librosObtenidos = await Libro.find(filtrosDeBusqueda).populate('autor_id');
-    return res.status(200).json({ count: librosObtenidos.length, data: librosObtenidos });
+    const librosObtenidos = await Libro.find(filtrosDeBusqueda).populate('autorId');
+    return res.status(200).json({
+      success: true,
+      count: librosObtenidos.length,
+      data: librosObtenidos
+    });
   } catch (error) {
     return manejarError(res, error);
   }
@@ -130,12 +152,25 @@ const obtenerLibros = async (req, res) => {
 const obtenerLibroPorId = async (req, res) => {
   try {
     const { id: idLibro } = req.params;
-    if (!esIdValido(idLibro)) return res.status(400).json({ mensaje: 'ID con formato inválido' });
+    if (!esIdValido(idLibro)) {
+      return res.status(400).json({
+        success: false,
+        mensaje: 'ID con formato inválido'
+      });
+    }
 
-    const libroEncontrado = await Libro.findById(idLibro).populate('autor_id');
-    if (!libroEncontrado) return res.status(404).json({ mensaje: 'Libro no encontrado' });
+    const libroEncontrado = await Libro.findById(idLibro).populate('autorId');
+    if (!libroEncontrado) {
+      return res.status(404).json({
+        success: false,
+        mensaje: 'Libro no encontrado'
+      });
+    }
 
-    return res.status(200).json({ data: libroEncontrado });
+    return res.status(200).json({
+      success: true,
+      data: libroEncontrado
+    });
   } catch (error) {
     return manejarError(res, error);
   }
@@ -145,35 +180,52 @@ const obtenerLibroPorId = async (req, res) => {
 const actualizarLibro = async (req, res) => {
   try {
     const { id: idLibro } = req.params;
-    if (!esIdValido(idLibro)) return res.status(400).json({ mensaje: 'ID con formato inválido' });
+    if (!esIdValido(idLibro)) {
+      return res.status(400).json({
+        success: false,
+        mensaje: 'ID con formato inválido'
+      });
+    }
 
-    const { isbn, titulo, anio, ejemplares_disponibles, autor_id } = req.body;
+    const { isbn, titulo, anio } = req.body;
+    const ejemplaresDisponibles = req.body.ejemplaresDisponibles ?? req.body.ejemplares_disponibles;
+    const autorId = req.body.autorId ?? req.body.autor_id;
+
     const camposParaActualizar = {};
-
     if (isbn !== undefined) camposParaActualizar.isbn = isbn;
     if (titulo !== undefined) camposParaActualizar.titulo = titulo;
     if (anio !== undefined) camposParaActualizar.anio = anio;
-    if (ejemplares_disponibles !== undefined) camposParaActualizar.ejemplares_disponibles = ejemplares_disponibles;
+    if (ejemplaresDisponibles !== undefined) {
+      camposParaActualizar.ejemplaresDisponibles = ejemplaresDisponibles;
+      camposParaActualizar.ejemplares_disponibles = ejemplaresDisponibles;
+    }
 
-    if (autor_id !== undefined) {
-      const validacionAutores = await validarAutores(autor_id);
+    if (autorId !== undefined) {
+      const validacionAutores = await validarAutores(autorId);
       if (validacionAutores?.error) {
-        return res.status(validacionAutores.error.status).json({ mensaje: validacionAutores.error.mensaje });
+        return res.status(validacionAutores.error.status).json({
+          success: false,
+          mensaje: validacionAutores.error.mensaje
+        });
       }
-      camposParaActualizar.autor_id = validacionAutores.autoresValidados;
+      camposParaActualizar.autorId = validacionAutores.autoresValidados;
     }
 
     const libroActualizado = await Libro.findByIdAndUpdate(
       idLibro,
       camposParaActualizar,
       { new: true, runValidators: true }
-    ).populate('autor_id');
+    ).populate('autorId');
 
     if (!libroActualizado) {
-      return res.status(404).json({ mensaje: 'Libro no encontrado para actualizar' });
+      return res.status(404).json({
+        success: false,
+        mensaje: 'Libro no encontrado para actualizar'
+      });
     }
 
     return res.status(200).json({
+      success: true,
       mensaje: 'Libro actualizado exitosamente',
       data: libroActualizado
     });
@@ -186,20 +238,32 @@ const actualizarLibro = async (req, res) => {
 const eliminarLibro = async (req, res) => {
   try {
     const { id: idLibro } = req.params;
-    if (!esIdValido(idLibro)) return res.status(400).json({ mensaje: 'ID con formato inválido' });
+    if (!esIdValido(idLibro)) {
+      return res.status(400).json({
+        success: false,
+        mensaje: 'ID con formato inválido'
+      });
+    }
 
     const libroAEliminar = await Libro.findById(idLibro);
-    if (!libroAEliminar) return res.status(404).json({ mensaje: 'Libro no encontrado para eliminar' });
+    if (!libroAEliminar) {
+      return res.status(404).json({
+        success: false,
+        mensaje: 'Libro no encontrado para eliminar'
+      });
+    }
 
     const tienePrestamos = await tienePrestamosActivosORetrasados(idLibro);
     if (tienePrestamos) {
       return res.status(409).json({
+        success: false,
         mensaje: 'No se puede eliminar un libro con préstamos Activos o Retrasados'
       });
     }
 
     const libroEliminado = await Libro.findByIdAndDelete(idLibro);
     return res.status(200).json({
+      success: true,
       mensaje: 'Libro eliminado exitosamente',
       data: libroEliminado
     });

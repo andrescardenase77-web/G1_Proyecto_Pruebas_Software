@@ -3,7 +3,7 @@ const express = require('express');
 const autorRoutes = require('./routes/autorRoutes');
 const lectorRoutes = require('./routes/lectorRoutes');
 const libroRoutes = require('./routes/libroRoutes');
-const prestamoRoutes = require('./routes/prestamo.routes');
+const prestamoRoutes = require('./routes/prestamoRoutes');
 
 const app = express();
 
@@ -11,7 +11,7 @@ app.use(express.json());
 app.disable('x-powered-by');
 
 app.get('/', (req, res) => {
-  res.json({ mensaje: 'API funcionando' });
+  res.json({ success: true, mensaje: 'API funcionando' });
 });
 
 app.use('/api/autores', autorRoutes);

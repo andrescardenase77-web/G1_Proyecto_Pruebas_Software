@@ -2,10 +2,8 @@ const mongoose = require('mongoose');
 const Autor = require('../models/autor');
 
 const idValido = (id) => mongoose.Types.ObjectId.isValid(id);
-
 const escaparRegex = (texto) => texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// RN-A2: no puede haber dos autores con el mismo nombre (sin importar mayúsculas)
 const nombreDuplicado = async (nombre, idExcluido) => {
   if (typeof nombre !== 'string') return false;
   const filtro = { nombre: new RegExp(`^${escaparRegex(nombre.trim())}$`, 'i') };
@@ -13,93 +11,204 @@ const nombreDuplicado = async (nombre, idExcluido) => {
   return Boolean(await Autor.exists(filtro));
 };
 
-// RN-A4: se consulta la colección de libros directamente para no depender del modelo Libro
 const tieneLibros = async (autorId) => {
+  const autorIdObj = new mongoose.Types.ObjectId(autorId);
   const total = await mongoose.connection
     .collection('libros')
-    .countDocuments({ autor_id: new mongoose.Types.ObjectId(autorId) }, { limit: 1 });
+    .countDocuments(
+      {
+        $or: [
+          { autorId: autorIdObj },
+          { autor_id: autorIdObj }
+        ]
+      },
+      { limit: 1 }
+    );
   return total > 0;
 };
 
-const manejarError = (res, err) => {
-  if (err.name === 'ValidationError' || err.name === 'CastError') {
-    return res.status(400).json({ mensaje: err.message });
+const manejarError = (res, error) => {
+  if (error.code === 11000) {
+    const campo = Object.keys(error.keyPattern || {})[0] || 'campo único';
+    return res.status(409).json({
+      success: false,
+      mensaje: `Ya existe un registro con ese valor en '${campo}'`
+    });
   }
-  return res.status(500).json({ mensaje: 'Error interno del servidor' });
+
+  if (error.name === 'ValidationError') {
+    const detalleError = Object.values(error.errors).map((err) => err.message).join(', ');
+    return res.status(400).json({
+      success: false,
+      mensaje: detalleError || 'Error de validación en los datos'
+    });
+  }
+
+  if (error.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      mensaje: 'Formato de dato o ID inválido'
+    });
+  }
+
+  return res.status(500).json({
+    success: false,
+    mensaje: 'Error interno del servidor',
+    error: error.message
+  });
 };
 
 const listarAutores = async (req, res) => {
   try {
     const autores = await Autor.find();
-    res.json(autores);
+    return res.status(200).json({
+      success: true,
+      count: autores.length,
+      data: autores
+    });
   } catch (err) {
-    manejarError(res, err);
+    return manejarError(res, err);
   }
 };
 
 const obtenerAutor = async (req, res) => {
   try {
     if (!idValido(req.params.id)) {
-      return res.status(400).json({ mensaje: 'ID inválido' });
+      return res.status(400).json({
+        success: false,
+        mensaje: 'ID con formato inválido'
+      });
     }
     const autor = await Autor.findById(req.params.id);
     if (!autor) {
-      return res.status(404).json({ mensaje: 'Autor no encontrado' });
+      return res.status(404).json({
+        success: false,
+        mensaje: 'Autor no encontrado'
+      });
     }
-    res.json(autor);
+    return res.status(200).json({
+      success: true,
+      data: autor
+    });
   } catch (err) {
-    manejarError(res, err);
+    return manejarError(res, err);
   }
 };
 
 const crearAutor = async (req, res) => {
   try {
-    if (await nombreDuplicado(req.body.nombre)) {
-      return res.status(409).json({ mensaje: 'Ya existe un autor con ese nombre' });
+    const { nombre, nacionalidad } = req.body;
+    const sitioWeb = req.body.sitioWeb ?? req.body.sitio_web;
+    const anioNacimiento = req.body.anioNacimiento ?? req.body.anio_nacimiento;
+
+    if (await nombreDuplicado(nombre)) {
+      return res.status(409).json({
+        success: false,
+        mensaje: 'Ya existe un autor con ese nombre'
+      });
     }
-    const autor = await Autor.create(req.body);
-    res.status(201).json(autor);
+
+    const autor = await Autor.create({
+      nombre,
+      nacionalidad,
+      sitioWeb,
+      anioNacimiento
+    });
+
+    return res.status(201).json({
+      success: true,
+      mensaje: 'Autor registrado exitosamente',
+      data: autor
+    });
   } catch (err) {
-    manejarError(res, err);
+    return manejarError(res, err);
   }
 };
 
 const actualizarAutor = async (req, res) => {
   try {
     if (!idValido(req.params.id)) {
-      return res.status(400).json({ mensaje: 'ID inválido' });
+      return res.status(400).json({
+        success: false,
+        mensaje: 'ID con formato inválido'
+      });
     }
-    if (await nombreDuplicado(req.body.nombre, req.params.id)) {
-      return res.status(409).json({ mensaje: 'Ya existe un autor con ese nombre' });
+
+    const { nombre, nacionalidad } = req.body;
+    const sitioWeb = req.body.sitioWeb ?? req.body.sitio_web;
+    const anioNacimiento = req.body.anioNacimiento ?? req.body.anio_nacimiento;
+
+    if (nombre && (await nombreDuplicado(nombre, req.params.id))) {
+      return res.status(409).json({
+        success: false,
+        mensaje: 'Ya existe un autor con ese nombre'
+      });
     }
-    const autor = await Autor.findByIdAndUpdate(req.params.id, req.body, {
+
+    const camposActualizar = {};
+    if (nombre !== undefined) camposActualizar.nombre = nombre;
+    if (nacionalidad !== undefined) camposActualizar.nacionalidad = nacionalidad;
+    if (sitioWeb !== undefined) {
+      camposActualizar.sitioWeb = sitioWeb;
+      camposActualizar.sitio_web = sitioWeb;
+    }
+    if (anioNacimiento !== undefined) {
+      camposActualizar.anioNacimiento = anioNacimiento;
+      camposActualizar.anio_nacimiento = anioNacimiento;
+    }
+
+    const autor = await Autor.findByIdAndUpdate(req.params.id, camposActualizar, {
       returnDocument: 'after',
-      runValidators: true,
+      runValidators: true
     });
+
     if (!autor) {
-      return res.status(404).json({ mensaje: 'Autor no encontrado' });
+      return res.status(404).json({
+        success: false,
+        mensaje: 'Autor no encontrado'
+      });
     }
-    res.json(autor);
+
+    return res.status(200).json({
+      success: true,
+      mensaje: 'Autor actualizado exitosamente',
+      data: autor
+    });
   } catch (err) {
-    manejarError(res, err);
+    return manejarError(res, err);
   }
 };
 
 const eliminarAutor = async (req, res) => {
   try {
     if (!idValido(req.params.id)) {
-      return res.status(400).json({ mensaje: 'ID inválido' });
+      return res.status(400).json({
+        success: false,
+        mensaje: 'ID con formato inválido'
+      });
     }
+
     if (await tieneLibros(req.params.id)) {
-      return res.status(409).json({ mensaje: 'No se puede eliminar un autor que tiene libros registrados' });
+      return res.status(409).json({
+        success: false,
+        mensaje: 'No se puede eliminar un autor que tiene libros registrados'
+      });
     }
+
     const autor = await Autor.findByIdAndDelete(req.params.id);
     if (!autor) {
-      return res.status(404).json({ mensaje: 'Autor no encontrado' });
+      return res.status(404).json({
+        success: false,
+        mensaje: 'Autor no encontrado'
+      });
     }
-    res.json({ mensaje: 'Autor eliminado' });
+
+    return res.status(200).json({
+      success: true,
+      mensaje: 'Autor eliminado exitosamente'
+    });
   } catch (err) {
-    manejarError(res, err);
+    return manejarError(res, err);
   }
 };
 
@@ -108,5 +217,5 @@ module.exports = {
   obtenerAutor,
   crearAutor,
   actualizarAutor,
-  eliminarAutor,
+  eliminarAutor
 };

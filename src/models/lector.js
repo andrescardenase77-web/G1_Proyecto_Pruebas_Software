@@ -16,14 +16,16 @@ const lectorSchema = new mongoose.Schema(
       trim: true,
       maxlength: [100, 'El nombre no puede exceder los 100 caracteres']
     },
-    grado_curso: {
+    gradoCurso: {
       type: String,
+      alias: 'grado_curso',
       trim: true,
       maxlength: [50, 'El grado/curso no puede exceder los 50 caracteres'],
       default: null
     },
-    correo_institucional: {
+    correoInstitucional: {
       type: String,
+      alias: 'correo_institucional',
       required: [true, 'El correo institucional es obligatorio'],
       unique: true,
       trim: true,
@@ -43,8 +45,10 @@ const lectorSchema = new mongoose.Schema(
   {
     collection: 'lectores',
     timestamps: false,
-    versionKey: false
+    versionKey: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
   }
 );
 
-module.exports = mongoose.model('Lector', lectorSchema);
+module.exports = mongoose.model('Lector', lectorSchema, 'lectores');
