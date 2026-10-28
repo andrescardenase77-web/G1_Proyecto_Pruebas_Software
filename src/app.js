@@ -11,9 +11,11 @@ app.get('/', (req, res) => {
 });
 
 
+const autorRoutes = require('./routes/autorRoutes');
 const lectorRoutes = require('./routes/lectorRoutes');
 const libroRoutes = require('./routes/libroRoutes');
 
+app.use('/api/autores', autorRoutes);
 app.use('/api/lectores', lectorRoutes);
 app.use('/api/libros', libroRoutes);
 
