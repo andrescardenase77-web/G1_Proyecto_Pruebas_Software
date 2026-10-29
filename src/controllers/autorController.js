@@ -2,7 +2,8 @@ const mongoose = require('mongoose');
 const Autor = require('../models/autor');
 
 const idValido = (id) => mongoose.Types.ObjectId.isValid(id);
-const escaparRegex = (texto) => texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// se usa String.raw en lugar de '\\$&' para no escapar la barra invertida
+const escaparRegex = (texto) => texto.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
 const nombreDuplicado = async (nombre, idExcluido) => {
   if (typeof nombre !== 'string') return false;
