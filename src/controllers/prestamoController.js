@@ -155,11 +155,11 @@ const crearPrestamo = async (req, res) => {
         mensaje: 'La fecha estimada de devolución es obligatoria'
       });
     }
+//correcion una vez evaluado con sonarque
+     const fechaInicio = new Date();
+     const fechaEstimada = new Date(fechaDevolucionEstimada);
 
-    const fechaInicio = new Date();
-    const fechaEstimada = new Date(fechaDevolucionEstimada);
-
-    if (isNaN(fechaEstimada.getTime())) {
+      if (Number.isNaN(fechaEstimada.getTime())) {
       return res.status(400).json({
         success: false,
         mensaje: 'La fecha estimada de devolución no tiene un formato válido'
