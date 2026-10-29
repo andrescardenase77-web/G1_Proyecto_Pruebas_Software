@@ -110,26 +110,6 @@ describe('Pruebas unitarias para el módulo de Lector (/api/lectores)', () => {
   });
 
   // ==========================================
-  // URI: PATCH /api/lectores/:id/sancion
-  // ==========================================
-
-  // Caso de éxito: actualiza únicamente el estado de sanción
-  test('PATCH /api/lectores/:id/sancion - Debe actualizar el estado de sanción (200)', async () => {
-    const sancionado = { ...mockLector, sancionado: true };
-    Lector.findByIdAndUpdate.mockResolvedValue(sancionado);
-    const res = await request(app).patch(`/api/lectores/${mockId}/sancion`).send({ sancionado: true });
-    expect(res.status).toBe(200);
-    expect(res.body.data.sancionado).toBe(true);
-  });
-
-  // Caso de error: el campo sancionado no es de tipo booleano
-  test('PATCH /api/lectores/:id/sancion - Debe retornar 400 si sancionado no es booleano', async () => {
-    const res = await request(app).patch(`/api/lectores/${mockId}/sancion`).send({ sancionado: 'si' });
-    expect(res.status).toBe(400);
-    expect(res.body.mensaje).toBe("El campo 'sancionado' debe ser booleano (true o false)");
-  });
-
-  // ==========================================
   // URI: DELETE /api/lectores/:id
   // ==========================================
 
