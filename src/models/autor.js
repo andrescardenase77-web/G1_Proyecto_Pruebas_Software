@@ -19,7 +19,8 @@ const autorSchema = new mongoose.Schema(
       alias: 'sitio_web',
       trim: true,
       maxlength: [150, 'El sitio web no puede superar 150 caracteres'],
-      match: [/^https?:\/\/\S+\.\S+$/, 'El sitio web debe ser una URL válida (http:// o https://)']
+      // el punto se separa de los demás caracteres para evitar backtracking (regla de SonarQube)
+      match: [/^https?:\/\/[^\s.]+(?:\.[^\s.]+)+$/, 'El sitio web debe ser una URL válida (http:// o https://)']
     },
     anioNacimiento: {
       type: Number,
