@@ -1,123 +1,164 @@
 const request = require('supertest');
+const mongoose = require('mongoose');
 const app = require('../src/app');
 
-// Mock del modelo de préstamos
 const Prestamo = require('../src/models/prestamo');
-jest.mock('../src/models/prestamo');
+const Libro = require('../src/models/libro');
+const Lector = require('../src/models/lector');
 
-describe('Pruebas Unitarias e Integración - Módulo Préstamos', () => {
+const idValido = new mongoose.Types.ObjectId().toString();
+const libroIdValido = new mongoose.Types.ObjectId().toString();
+const lectorIdValido = new mongoose.Types.ObjectId().toString();
 
-  // Mock flexible que soporta .populate(), .sort(), .lean(), etc.
-  const crearMockCadenaMongoose = (resultado = []) => {
-    const chain = {};
-    chain.populate = jest.fn().mockReturnValue(chain);
-    chain.sort = jest.fn().mockReturnValue(chain);
-    chain.lean = jest.fn().mockReturnValue(chain);
-    chain.then = (resolve, reject) => Promise.resolve(resultado).then(resolve, reject);
-    return chain;
-  };
+const crearQueryMock = (resultado) => ({
+  populate: jest.fn().mockReturnThis(),
+  sort: jest.fn().mockReturnThis(),
+  then: (resolve) => Promise.resolve(resultado).then(resolve)
+});
 
+describe('Pruebas unitarias controladas - prestamoController', () => {
   afterEach(() => {
-    jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
-  // 1. Obtener todos los préstamos (GET /api/prestamos)
-  describe('GET /api/prestamos', () => {
-    it('debe responder con estado 200 y la lista de préstamos', async () => {
-      const mockData = [{ _id: '6620f1a1e9b1c23456789001', estado: 'prestado' }];
-      Prestamo.find = jest.fn().mockReturnValue(crearMockCadenaMongoose(mockData));
+  // 1. GET /api/prestamos
+  test('GET /api/prestamos - debe responder con listado general (200)', async () => {
+    jest.spyOn(Prestamo, 'find').mockReturnValue(crearQueryMock([{ _id: idValido, estado: 'Activo' }]));
+    const res = await request(app).get('/api/prestamos');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
 
-      const res = await request(app).get('/api/prestamos');
-      expect([200, 304]).toContain(res.statusCode);
-      expect(res.body).toBeDefined();
+  // 2. GET /api/prestamos/retrasados
+  test('GET /api/prestamos/retrasados - debe retornar prestamos en mora (200)', async () => {
+    jest.spyOn(Prestamo, 'find').mockReturnValue(crearQueryMock([{ _id: idValido, estado: 'Activo' }]));
+    const res = await request(app).get('/api/prestamos/retrasados');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  // 3. GET /api/prestamos/lector/:lectorId
+  test('GET /api/prestamos/lector/:lectorId - debe retornar historial (200)', async () => {
+    jest.spyOn(Prestamo, 'find').mockReturnValue(crearQueryMock([{ _id: idValido }]));
+    const res = await request(app).get(`/api/prestamos/lector/${lectorIdValido}`);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  test('GET /api/prestamos/lector/:lectorId - debe rechazar ID invalido (400)', async () => {
+    const res = await request(app).get('/api/prestamos/lector/id-invalido-123');
+    expect(res.status).toBe(400);
+  });
+
+  // 4. GET /api/prestamos/:id
+  test('GET /api/prestamos/:id - debe obtener prestamo por ID (200)', async () => {
+    jest.spyOn(Prestamo, 'findById').mockReturnValue(crearQueryMock({ _id: idValido }));
+    const res = await request(app).get(`/api/prestamos/${idValido}`);
+    expect(res.status).toBe(200);
+  });
+
+  test('GET /api/prestamos/:id - debe retornar 404 si no existe', async () => {
+    jest.spyOn(Prestamo, 'findById').mockReturnValue(crearQueryMock(null));
+    const res = await request(app).get(`/api/prestamos/${idValido}`);
+    expect(res.status).toBe(404);
+  });
+
+  // 5. POST /api/prestamos
+  test('POST /api/prestamos - debe rechazar fecha no valida (400)', async () => {
+    const res = await request(app).post('/api/prestamos').send({
+      libro: libroIdValido,
+      lector: lectorIdValido,
+      fechaDevolucionEstimada: 'fecha-erronea'
     });
+    expect(res.status).toBe(400);
   });
 
-  // 2. Reportes de préstamos retrasados (GET /api/prestamos/retrasados)
-  describe('GET /api/prestamos/retrasados', () => {
-    it('debe responder con estado 200 al consultar préstamos retrasados', async () => {
-      Prestamo.find = jest.fn().mockReturnValue(crearMockCadenaMongoose([]));
-
-      const res = await request(app).get('/api/prestamos/retrasados');
-      expect([200, 304]).toContain(res.statusCode);
+  test('POST /api/prestamos - debe rechazar fecha en el pasado (400)', async () => {
+    const res = await request(app).post('/api/prestamos').send({
+      libro: libroIdValido,
+      lector: lectorIdValido,
+      fechaDevolucionEstimada: new Date('2020-01-01')
     });
+    expect(res.status).toBe(400);
   });
 
-  // 3. Historial de préstamos por lector (GET /api/prestamos/lector/:lectorId)
-  describe('GET /api/prestamos/lector/:lectorId', () => {
-    it('debe responder adecuadamente al consultar el historial de un lector', async () => {
-      const mockLectorId = '6620f1a1e9b1c23456789002';
-      Prestamo.find = jest.fn().mockReturnValue(crearMockCadenaMongoose([]));
+  test('POST /api/prestamos - debe rechazar si no hay stock del libro (400)', async () => {
+    const fechaFutura = new Date();
+    fechaFutura.setDate(fechaFutura.getDate() + 5);
 
-      const res = await request(app).get(`/api/prestamos/lector/${mockLectorId}`);
-      expect([200, 304, 404, 500]).toContain(res.statusCode);
+    jest.spyOn(Lector, 'findById').mockResolvedValue({ _id: lectorIdValido, sancionado: false });
+    jest.spyOn(Prestamo, 'countDocuments').mockResolvedValue(0);
+    jest.spyOn(Libro, 'findById').mockResolvedValue({ _id: libroIdValido, ejemplaresDisponibles: 0 });
+
+    const res = await request(app).post('/api/prestamos').send({
+      libro: libroIdValido,
+      lector: lectorIdValido,
+      fechaDevolucionEstimada: fechaFutura
     });
+    expect(res.status).toBe(400);
   });
 
-  // 4. Obtener préstamo por ID (GET /api/prestamos/:id)
-  describe('GET /api/prestamos/:id', () => {
-    it('debe responder con código 400, 404 o 500 si el ID no existe', async () => {
-      Prestamo.findById = jest.fn().mockReturnValue(crearMockCadenaMongoose(null));
+  test('POST /api/prestamos - debe registrar prestamo exitosamente (201)', async () => {
+    const fechaFutura = new Date();
+    fechaFutura.setDate(fechaFutura.getDate() + 7);
 
-      const res = await request(app).get('/api/prestamos/6620f1a1e9b1c23456789999');
-      expect([400, 404, 500]).toContain(res.statusCode);
+    jest.spyOn(Lector, 'findById').mockResolvedValue({ _id: lectorIdValido, sancionado: false });
+    jest.spyOn(Prestamo, 'countDocuments').mockResolvedValue(1);
+    jest.spyOn(Libro, 'findById').mockResolvedValue({ _id: libroIdValido, ejemplaresDisponibles: 3 });
+    jest.spyOn(Libro, 'findByIdAndUpdate').mockResolvedValue({});
+    jest.spyOn(Prestamo.prototype, 'save').mockResolvedValue({ _id: idValido, estado: 'Activo' });
+
+    const res = await request(app).post('/api/prestamos').send({
+      libro: libroIdValido,
+      lector: lectorIdValido,
+      fechaDevolucionEstimada: fechaFutura,
+      observaciones: 'Prueba de laboratorio'
     });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
   });
 
-  // 5. Crear préstamo (POST /api/prestamos) - Validación con Number.isNaN
-  describe('POST /api/prestamos', () => {
-    it('debe rechazar con código 400 si la fecha de devolución estimada es inválida', async () => {
-      const payloadInvalido = {
-        libro: '6620f1a1e9b1c23456789001',
-        lector: '6620f1a1e9b1c23456789002',
-        fechaDevolucionEstimada: 'fecha-no-valida-texto'
-      };
+  // 6. POST /api/prestamos/:id/devolucion
+  test('POST /api/prestamos/:id/devolucion - debe procesar devolucion a tiempo (200)', async () => {
+    const fechaFutura = new Date();
+    fechaFutura.setDate(fechaFutura.getDate() + 3);
 
-      const res = await request(app)
-        .post('/api/prestamos')
-        .send(payloadInvalido);
+    const prestamoActivo = {
+      _id: idValido,
+      estado: 'Activo',
+      libro: libroIdValido,
+      lector: lectorIdValido,
+      fechaDevolucionEstimada: fechaFutura,
+      save: jest.fn().mockResolvedValue(true)
+    };
 
-      expect([400, 500]).toContain(res.statusCode);
-    });
+    jest.spyOn(Prestamo, 'findById').mockResolvedValue(prestamoActivo);
+    jest.spyOn(Libro, 'findByIdAndUpdate').mockResolvedValue({});
+
+    const res = await request(app).post(`/api/prestamos/${idValido}/devolucion`);
+    expect(res.status).toBe(200);
+    expect(res.body.mensaje).toBe('Devolución procesada con éxito');
   });
 
-  // 6. Actualizar préstamo (PUT /api/prestamos/:id)
-  describe('PUT /api/prestamos/:id', () => {
-    it('debe responder adecuadamente al actualizar un préstamo', async () => {
-      Prestamo.findByIdAndUpdate = jest.fn().mockResolvedValue({
-        _id: '6620f1a1e9b1c23456789001',
-        observaciones: 'Actualizado'
-      });
-
-      const res = await request(app)
-        .put('/api/prestamos/6620f1a1e9b1c23456789001')
-        .send({ observaciones: 'Actualizado' });
-
-      expect([200, 400, 404]).toContain(res.statusCode);
-    });
+  test('POST /api/prestamos/:id/devolucion - debe rechazar si ya fue devuelto (400)', async () => {
+    jest.spyOn(Prestamo, 'findById').mockResolvedValue({ _id: idValido, estado: 'Devuelto' });
+    const res = await request(app).post(`/api/prestamos/${idValido}/devolucion`);
+    expect(res.status).toBe(400);
   });
 
-  // 7. Devolver libro (POST /api/prestamos/:id/devolucion)
-  describe('POST /api/prestamos/:id/devolucion', () => {
-    it('debe responder con código 400, 404 o 500 si el préstamo a devolver no existe', async () => {
-      Prestamo.findById = jest.fn().mockResolvedValue(null);
-
-      const res = await request(app)
-        .post('/api/prestamos/6620f1a1e9b1c23456789001/devolucion')
-        .send({});
-
-      expect([400, 404, 500]).toContain(res.statusCode);
-    });
+  // 7. PUT /api/prestamos/:id
+  test('PUT /api/prestamos/:id - debe actualizar prestamo (200)', async () => {
+    jest.spyOn(Prestamo, 'findByIdAndUpdate').mockResolvedValue({ _id: idValido, observaciones: 'Nota actualizada' });
+    const res = await request(app).put(`/api/prestamos/${idValido}`).send({ observaciones: 'Nota actualizada' });
+    expect(res.status).toBe(200);
   });
 
-  // 8. Eliminar préstamo (DELETE /api/prestamos/:id)
-  describe('DELETE /api/prestamos/:id', () => {
-    it('debe responder adecuadamente al intentar eliminar un préstamo', async () => {
-      Prestamo.findByIdAndDelete = jest.fn().mockResolvedValue(null);
-
-      const res = await request(app).delete('/api/prestamos/6620f1a1e9b1c23456789001');
-      expect([200, 204, 400, 404]).toContain(res.statusCode);
-    });
+  // 8. DELETE /api/prestamos/:id
+  test('DELETE /api/prestamos/:id - debe eliminar prestamo (200)', async () => {
+    jest.spyOn(Prestamo, 'findById').mockResolvedValue({ _id: idValido, estado: 'Devuelto' });
+    jest.spyOn(Prestamo, 'findByIdAndDelete').mockResolvedValue({});
+    const res = await request(app).delete(`/api/prestamos/${idValido}`);
+    expect(res.status).toBe(200);
   });
-
 });

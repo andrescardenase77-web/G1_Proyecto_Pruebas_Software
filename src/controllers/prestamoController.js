@@ -155,18 +155,17 @@ const crearPrestamo = async (req, res) => {
         mensaje: 'La fecha estimada de devolución es obligatoria'
       });
     }
-//correcion una vez evaluado con sonarque
-     const fechaInicio = new Date();
-     const fechaEstimada = new Date(fechaDevolucionEstimada);
 
-      if (Number.isNaN(fechaEstimada.getTime())) {
+    const fechaInicio = new Date();
+    const fechaEstimada = new Date(fechaDevolucionEstimada);
+
+    if (Number.isNaN(fechaEstimada.getTime())) {
       return res.status(400).json({
         success: false,
         mensaje: 'La fecha estimada de devolución no tiene un formato válido'
       });
     }
 
-    // Regla: Validación cronológica de fechas
     if (fechaEstimada <= fechaInicio) {
       return res.status(400).json({
         success: false,
@@ -174,7 +173,6 @@ const crearPrestamo = async (req, res) => {
       });
     }
 
-    // Regla: Validar existencia del lector
     const lectorDoc = await Lector.findById(lector);
     if (!lectorDoc) {
       return res.status(404).json({
@@ -183,7 +181,6 @@ const crearPrestamo = async (req, res) => {
       });
     }
 
-    // Regla: Verificar sanción del lector (403 Forbidden)
     if (lectorDoc.sancionado) {
       return res.status(403).json({
         success: false,
@@ -191,7 +188,6 @@ const crearPrestamo = async (req, res) => {
       });
     }
 
-    // Regla: Límite de 3 préstamos activos en paralelo
     const prestamosActivos = await Prestamo.countDocuments({
       lector: lector,
       estado: 'Activo'
@@ -203,7 +199,6 @@ const crearPrestamo = async (req, res) => {
       });
     }
 
-    // Regla: Validar existencia y stock del libro
     const libroDoc = await Libro.findById(libro);
     if (!libroDoc) {
       return res.status(404).json({
@@ -220,7 +215,6 @@ const crearPrestamo = async (req, res) => {
       });
     }
 
-    // Crear registro
     const nuevoPrestamo = new Prestamo({
       libro,
       lector,
@@ -231,7 +225,6 @@ const crearPrestamo = async (req, res) => {
 
     const prestamoGuardado = await nuevoPrestamo.save();
 
-    // Descuento automático de inventario (actualiza ambos para total compatibilidad)
     await Libro.findByIdAndUpdate(libro, {
       $inc: {
         ejemplaresDisponibles: -1,
@@ -280,7 +273,6 @@ const devolverLibro = async (req, res) => {
     prestamo.estado = 'Devuelto';
     await prestamo.save();
 
-    // Reintegrar ejemplar al stock
     await Libro.findByIdAndUpdate(prestamo.libro, {
       $inc: {
         ejemplaresDisponibles: 1,
@@ -288,7 +280,6 @@ const devolverLibro = async (req, res) => {
       }
     });
 
-    // Regla: Si se devuelve después de la fecha estimada, sancionar al lector
     let mensajeSancion = 'Devolución dentro del plazo previsto.';
     if (fechaReal > new Date(prestamo.fechaDevolucionEstimada)) {
       await Lector.findByIdAndUpdate(prestamo.lector, { sancionado: true });
@@ -306,7 +297,7 @@ const devolverLibro = async (req, res) => {
   }
 };
 
-// 7. Actualizar préstamo (PUT estándar)
+// 7. Actualizar préstamo
 const actualizarPrestamo = async (req, res) => {
   try {
     const { id } = req.params;
@@ -358,7 +349,6 @@ const eliminarPrestamo = async (req, res) => {
       });
     }
 
-    // Si aún estaba activo, restituir el ejemplar
     if (prestamo.estado === 'Activo') {
       await Libro.findByIdAndUpdate(prestamo.libro, {
         $inc: {
@@ -389,4 +379,3 @@ module.exports = {
   actualizarPrestamo,
   eliminarPrestamo
 };
-
