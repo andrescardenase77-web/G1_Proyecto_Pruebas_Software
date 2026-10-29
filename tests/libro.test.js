@@ -11,6 +11,11 @@ describe('Pruebas Unitarias - Módulo de Libros (/api/libros)', () => {
   beforeAll(async () => {
     await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 8000 });
 
+    // Limpieza preventiva: si una ejecución previa falló o se canceló, eliminamos residuos
+    await mongoose.connection.collection('libros').deleteMany({
+      isbn: { $in: ['9780140449136', '9786073115456'] }
+    });
+
     // Obtener un autor existente para asociar en las pruebas
     const autor = await mongoose.connection.collection('autores').findOne({});
     if (autor) {
